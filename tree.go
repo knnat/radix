@@ -12,8 +12,6 @@ const (
 	Tsafe = 1 << iota
 	// Tdebug adds more information to the tree's string representation.
 	Tdebug
-	// Tbinary uses a binary PATRICIA tree instead of a prefix tree.
-	Tbinary
 	// Tnocolor disables colorful output.
 	Tnocolor
 )
