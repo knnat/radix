@@ -1,7 +1,6 @@
 package radix
 
 import (
-	"bytes"
 	"strings"
 	"sync"
 
@@ -25,7 +24,6 @@ type Tree struct {
 	length      int // total number of nodes
 	size        int // total byte size
 	safe        bool
-	binary      bool
 	placeholder byte
 	delim       byte
 	mu          *sync.RWMutex
@@ -37,10 +35,6 @@ func New(flags int) *Tree {
 	tr := &Tree{
 		root:   &Node{},
 		length: 1,
-	}
-	if flags&Tbinary > 0 {
-		tr.binary = true
-		tr.root.edges = make([]*edge, 2) // create two empty edges
 	}
 	if flags&Tsafe > 0 {
 		tr.mu = &sync.RWMutex{}
@@ -71,12 +65,6 @@ func (tr *Tree) Add(label string, v interface{}) {
 		tr.mu.Lock()
 	}
 	tnode := tr.root
-	if tr.binary {
-		nn := tnode.addBinary(label, v)
-		tr.length += nn
-		tr.size += nn / 8
-		return
-	}
 	for {
 		var next *edge
 		var slice string
@@ -192,17 +180,6 @@ func (tr *Tree) Del(label string) {
 		tr.mu.Lock()
 	}
 	tnode := tr.root
-	if tr.binary {
-		del := tnode.delBinary(label)
-		tr.length--
-		bits := tr.size*8 - del
-		if bits == 0 {
-			tr.size = 0
-			return
-		}
-		tr.size = (bits / 8) + 1
-		return
-	}
 	var edgex int
 	var parent *edge
 	var ptrs []*int
@@ -274,9 +251,6 @@ func (tr *Tree) Get(label string) (*Node, map[string]string) {
 		tr.mu.RLock()
 	}
 	tnode := tr.root
-	if tr.binary {
-		return tnode.getBinary(label), nil
-	}
 	var params map[string]string
 	for tnode != nil && label != "" {
 		var next *edge
@@ -361,13 +335,11 @@ func (tr *Tree) Size() int {
 // Sort sorts the tree nodes and its children recursively
 // according to their priority lengther.
 func (tr *Tree) Sort(st SortingTechnique) {
-	if !tr.binary {
-		if tr.safe {
-			defer tr.mu.Unlock()
-			tr.mu.Lock()
-		}
-		tr.root.sort(st)
+	if tr.safe {
+		defer tr.mu.Unlock()
+		tr.mu.Lock()
 	}
+	tr.root.sort(st)
 }
 
 // String returns a string representation of the tree structure.
@@ -388,10 +360,6 @@ func (tr *Tree) String() string {
 		bd.WriteString(mag.Wrap(")"))
 	}
 	tr.bd.WriteByte('\n')
-	if tr.binary {
-		tr.root.writeToBinary(tr.bd, &bytes.Buffer{}, &bytes.Buffer{})
-	} else {
-		tr.root.writeTo(tr.bd)
-	}
+	tr.root.writeTo(tr.bd)
 	return tr.bd.String()
 }
