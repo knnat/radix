@@ -1,6 +1,7 @@
 package radix
 
 import (
+	"errors"
 	"strings"
 	"sync"
 
@@ -18,74 +19,122 @@ const (
 
 // Tree is a radix tree.
 type Tree struct {
-	root        *Node
-	length      int // total number of nodes
-	size        int // total byte size
-	safe        bool
-	placeholder byte
-	delim       byte
-	mu          *sync.RWMutex
-	bd          *builder
+	root      *Node
+	length    int // total number of nodes
+	size      int // total byte size
+	safe      bool
+	escapeAt  byte // default '@'
+	escapeEnd byte // default '*'
+	delim     byte // default '/'
+	mu        *sync.RWMutex
+	bd        *builder
 }
 
+// Settings ...
+type Settings struct {
+	Flags     int
+	EscapeAt  byte
+	EscapeEnd byte
+	Delimiter byte
+}
+
+var defaults = &Settings{
+	Flags:     0,
+	EscapeAt:  '@',
+	EscapeEnd: '*',
+	Delimiter: '/',
+}
+
+var (
+	// ErrEscape indicates conflicting escape symbol.
+	ErrEscape = errors.New("escape symbols conflict")
+)
+
 // New creates a named radix tree with a single node (its root).
-func New(flags int) *Tree {
+func (s *Settings) New() *Tree {
 	tr := &Tree{
-		root:   &Node{},
-		length: 1,
+		root:      &Node{},
+		length:    1,
+		escapeAt:  s.EscapeAt,
+		escapeEnd: s.EscapeEnd,
+		delim:     s.Delimiter,
 	}
-	if flags&Tsafe > 0 {
+	if s.Flags&Tsafe > 0 {
 		tr.mu = &sync.RWMutex{}
 		tr.safe = true
 	}
 	tr.bd = &builder{
 		Builder: &strings.Builder{},
-		debug:   flags&Tdebug > 0,
+		debug:   s.Flags&Tdebug > 0,
 	}
 	tr.bd.colors[colorRed] = color.New(color.CodeFgRed)
 	tr.bd.colors[colorGreen] = color.New(color.CodeFgGreen)
 	tr.bd.colors[colorMagenta] = color.New(color.CodeFgMagenta)
 	tr.bd.colors[colorBold] = color.New(color.CodeBold)
 	for _, c := range tr.bd.colors {
-		c.SetDisabled(flags&Tnocolor > 0)
+		c.SetDisabled(s.Flags&Tnocolor > 0)
 	}
 	return tr
 }
 
+// New creates a named radix tree with a single node (its root).
+func New() *Tree {
+	return defaults.New()
+}
+
 // Add adds a new node to the tree.
-func (tr *Tree) Add(label string, v interface{}) {
+func (tr *Tree) Add(label string, v interface{}) error {
 	// No empty strings or interfaces allowed.
 	if label == "" || v == nil {
-		return
+		return nil
 	}
 	if tr.safe {
 		defer tr.mu.Unlock()
 		tr.mu.Lock()
 	}
 	tnode := tr.root
+	var inEscapeAt bool
+	var inEscapeEnd bool
 	for {
 		var next *edge
 		var slice string
 		for _, edge := range tnode.edges {
-			var found int
+			var matches int
 			slice = edge.label
 			for i := range slice {
 				if i < len(label) && slice[i] == label[i] {
-					found++
+					if slice[i] == tr.escapeAt {
+						if inEscapeAt || inEscapeEnd {
+							return ErrEscape
+						}
+						inEscapeAt = true
+					}
+					if slice[i] == tr.escapeEnd {
+						if inEscapeAt || inEscapeEnd {
+							return ErrEscape
+						}
+						inEscapeEnd = true
+					}
+					if slice[i] == tr.delim {
+						if inEscapeEnd {
+							return ErrEscape
+						}
+						inEscapeAt = false
+					}
+					matches++
 					continue
 				}
 				break
 			}
-			if found > 0 {
-				label = label[found:]
-				slice = slice[found:]
+			if matches > 0 {
+				label = label[matches:]
+				slice = slice[matches:]
 				next = edge
 				break
 			}
 		}
 		if next != nil {
-			tnode = next.n
-			tnode.priority++
+			tnode = next.node
 			// Match the whole word.
 			if len(label) == 0 {
 				// The label is exactly the same as the edge's label,
@@ -97,7 +146,7 @@ func (tr *Tree) Add(label string, v interface{}) {
 				// 	(root) -> tnode("tomato", v2)
 				if len(slice) == 0 {
 					tnode.Value = v
-					return
+					return nil
 				}
 				// The label is a prefix of the edge's label.
 				//
@@ -105,18 +154,20 @@ func (tr *Tree) Add(label string, v interface{}) {
 				// 	(root) -> tnode("tomato", v1)
 				// 	then add "tom"
 				// 	(root) -> ("tom", v2) -> ("ato", v1)
+				if inEscapeAt || inEscapeEnd {
+					return ErrEscape
+				}
 				next.label = next.label[:len(next.label)-len(slice)]
 				c := tnode.clone()
-				c.priority--
 				tnode.edges = []*edge{
 					&edge{
 						label: slice,
-						n:     c,
+						node:  c,
 					},
 				}
 				tnode.Value = v
 				tr.length++
-				return
+				return nil
 			}
 			// Add a new node but break its parent into prefix and
 			// the remaining slice as a new edge.
@@ -127,19 +178,20 @@ func (tr *Tree) Add(label string, v interface{}) {
 			// 	(root) -> ("to", nil) -> ("mato", v1)
 			// 	                      +> ("rnado", v2)
 			if len(slice) > 0 {
+				if inEscapeAt || inEscapeEnd {
+					return ErrEscape
+				}
 				c := tnode.clone()
-				c.priority--
 				tnode.edges = []*edge{
 					&edge{ // the suffix that is clone into a new node
 						label: slice,
-						n:     c,
+						node:  c,
 					},
 					&edge{ // the new node
 						label: label,
-						n: &Node{
-							Value:    v,
-							depth:    tnode.depth + 1,
-							priority: 1,
+						node: &Node{
+							Value: v,
+							depth: tnode.depth + 1,
 						},
 					},
 				}
@@ -147,21 +199,47 @@ func (tr *Tree) Add(label string, v interface{}) {
 				tnode.Value = nil
 				tr.length += 2
 				tr.size += len(label)
-				return
+				return nil
 			}
 			continue
 		}
-		tnode.edges = append(tnode.edges, &edge{
-			label: label,
-			n: &Node{
-				Value:    v,
-				depth:    tnode.depth + 1,
-				priority: 1,
-			},
-		})
+		// Make sure the edge with escape prefixed label is placed
+		// on the last edges and check for escape symbol conflict.
+		//
+		// Example:
+		//  (root) -> ("users", v1)
+		//         -> ("@uid", v2)
+		//  then add ("all", v3)
+		//  (root) -> ("users", v1)
+		//         -> ("all", v3)
+		//         -> ("@uid", v2)
+		e := tnode.edges[len(tnode.edges)-1].label[0]
+		if e == tr.escapeAt || e == tr.escapeEnd {
+			if label[0] == tr.escapeAt || label[0] == tr.escapeEnd {
+				return ErrEscape
+			}
+			// Insert new edge before the last edge.
+			tnode.edges = append(tnode.edges, &edge{})
+			copy(tnode.edges[len(tnode.edges)-1:], tnode.edges[len(tnode.edges)-2:])
+			tnode.edges[len(tnode.edges)-2] = &edge{
+				label: label,
+				node: &Node{
+					Value: v,
+					depth: tnode.depth + 1,
+				},
+			}
+		} else {
+			tnode.edges = append(tnode.edges, &edge{
+				label: label,
+				node: &Node{
+					Value: v,
+					depth: tnode.depth + 1,
+				},
+			})
+		}
 		tr.length++
 		tr.size += len(label)
-		return
+		return nil
 	}
 }
 
@@ -180,7 +258,6 @@ func (tr *Tree) Del(label string) {
 	tnode := tr.root
 	var edgex int
 	var parent *edge
-	var ptrs []*int
 	for tnode != nil && label != "" {
 		var next *edge
 		// Look for exact matches.
@@ -192,9 +269,8 @@ func (tr *Tree) Del(label string) {
 			}
 		}
 		if next != nil {
-			tnode = next.n
+			tnode = next.node
 			label = label[len(next.label):]
-			ptrs = append(ptrs, &tnode.priority)
 			// While not the exact match, set the tnode's parent.
 			if label != "" {
 				parent = next
@@ -208,17 +284,7 @@ func (tr *Tree) Del(label string) {
 	if tnode != nil {
 		pnode := tr.root // in case label matched in the first try
 		if parent != nil {
-			pnode = parent.n
-		}
-		// Decrement the priority of upper nodes.
-		done := make(chan struct{})
-		if tnode.Value != nil {
-			go func() {
-				for _, p := range ptrs {
-					*p--
-				}
-				close(done)
-			}()
+			pnode = parent.node
 		}
 		// Merge tnode's edges with the parent's.
 		pnode.edges = append(pnode.edges, tnode.edges...)
@@ -228,14 +294,11 @@ func (tr *Tree) Del(label string) {
 		if len(pnode.edges) == 1 && pnode.Value == nil && parent != nil {
 			e := pnode.edges[0]
 			parent.label += e.label
-			pnode.Value = e.n.Value
-			pnode.edges = e.n.edges
+			pnode.Value = e.node.Value
+			pnode.edges = e.node.edges
 			tr.length--
 		}
 		tr.length--
-		if tnode.Value != nil {
-			<-done
-		}
 	}
 }
 
@@ -250,6 +313,7 @@ func (tr *Tree) Get(label string) (*Node, map[string]string) {
 	}
 	tnode := tr.root
 	var params map[string]string
+	var escapeEnd bool
 	for tnode != nil && label != "" {
 		var next *edge
 	Walk:
@@ -259,8 +323,13 @@ func (tr *Tree) Get(label string) (*Node, map[string]string) {
 				phIndex := len(slice)
 				// Check if there are any placeholders.
 				// If there are none, then use the whole word for comparison.
-				if i := strings.IndexByte(slice, tr.placeholder); i >= 0 {
+				// Only one of :
+				if i := strings.IndexByte(slice, tr.escapeAt); i >= 0 {
 					phIndex = i
+				}
+				if i := strings.IndexByte(slice, tr.escapeEnd); i >= 0 {
+					phIndex = i
+					escapeEnd = true
 				}
 				prefix := slice[:phIndex]
 				// If "slice" (until placeholder) is not prefix of
@@ -285,13 +354,19 @@ func (tr *Tree) Get(label string) (*Node, map[string]string) {
 				}
 				key := slice[1:delimIndex] // remove the placeholder from the map key
 				slice = slice[delimIndex:]
-				if delimIndex = strings.IndexByte(label[1:], tr.delim) + 1; delimIndex <= 0 {
+				if escapeEnd {
 					delimIndex = len(label)
+				} else {
+					if delimIndex = strings.IndexByte(label[1:], tr.delim) + 1; delimIndex <= 0 {
+						delimIndex = len(label)
+					}
 				}
-				if params == nil {
-					params = make(map[string]string)
+				if len(key) > 0 {
+					if params == nil {
+						params = make(map[string]string)
+					}
+					params[key] = label[:delimIndex]
 				}
-				params[key] = label[:delimIndex]
 				label = label[delimIndex:]
 				if slice == "" && label == "" {
 					next = edge
@@ -300,7 +375,7 @@ func (tr *Tree) Get(label string) (*Node, map[string]string) {
 			}
 		}
 		if next != nil {
-			tnode = next.n
+			tnode = next.node
 			continue
 		}
 		tnode = nil
@@ -316,13 +391,6 @@ func (tr *Tree) Len() int {
 		tr.mu.RLock()
 	}
 	return tr.length
-}
-
-// SetBoundaries sets a placeholder and a delimiter for
-// the tree to be able to search for named labels.
-func (tr *Tree) SetBoundaries(placeholder, delim byte) {
-	tr.placeholder = placeholder
-	tr.delim = delim
 }
 
 // Size returns the total byte size stored in the tree.

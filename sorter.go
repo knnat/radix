@@ -33,9 +33,7 @@ func (s *sorter) Less(i, j int) bool {
 	case DescLabelSort:
 		return n.edges[i].label > n.edges[j].label
 	default:
-		return n.edges[i].n != nil &&
-			n.edges[j].n != nil &&
-			n.edges[i].n.priority > n.edges[j].n.priority
+		return true
 	}
 }
 

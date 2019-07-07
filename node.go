@@ -6,10 +6,9 @@ import (
 
 // Node is a node of a radix tree.
 type Node struct {
-	Value    interface{}
-	edges    []*edge
-	priority int
-	depth    int
+	Value interface{}
+	edges []*edge
+	depth int
 }
 
 // Depth returns the node's depth.
@@ -23,13 +22,8 @@ func (n *Node) IsLeaf() bool {
 	return length == 0
 }
 
-// Priority returns the node's priority.
-func (n *Node) Priority() int {
-	return n.priority
-}
-
 func (n *Node) clone() *Node {
-	c := *n
+	c := *n // https://stackoverflow.com/questions/27084401/how-does-pointer-dereferencing-work-in-golang
 	c.incrDepth()
 	return &c
 }
@@ -37,7 +31,7 @@ func (n *Node) clone() *Node {
 func (n *Node) incrDepth() {
 	n.depth++
 	for _, e := range n.edges {
-		e.n.incrDepth()
+		e.node.incrDepth()
 	}
 }
 
@@ -49,7 +43,7 @@ func (n *Node) sort(st SortingTechnique) {
 	}
 	sort.Sort(s)
 	for _, e := range n.edges {
-		e.n.sort(st)
+		e.node.sort(st)
 	}
 }
 
