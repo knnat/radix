@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	. "github.com/gbrlsnchs/radix"
+	. "github.com/knnat/radix"
 )
 
 type testWrapper struct {
@@ -155,10 +155,10 @@ func TestTree(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
-			tr := New(Tdebug)
-			if tc.placeholder != 0 && tc.delim != 0 {
-				tr.SetBoundaries(tc.placeholder, tc.delim)
-			}
+			tr := New()
+			// if tc.placeholder != 0 && tc.delim != 0 {
+			// 	tr.SetBoundaries(tc.placeholder, tc.delim)
+			// }
 			for _, w := range tc.wrappers {
 				tr.Add(w.label, w.value)
 			}
@@ -179,9 +179,9 @@ func TestTree(t *testing.T) {
 				if want, got := w.value, n.Value; !reflect.DeepEqual(want, got) {
 					t.Errorf("want %v, got %v", want, got)
 				}
-				if want, got := w.priority, n.Priority(); want != got {
-					t.Errorf("want %d, got %d", want, got)
-				}
+				// if want, got := w.priority, n.Priority(); want != got {
+				// 	t.Errorf("want %d, got %d", want, got)
+				// }
 				if want, got := w.depth, n.Depth(); want != got {
 					t.Errorf("want %d, got %d", want, got)
 				}
@@ -195,65 +195,6 @@ func TestTree(t *testing.T) {
 				n, _ = tr.Get(tc.labels[i])
 				if want, got := (*Node)(nil), n; want != got {
 					t.Errorf("want %v, got %v", want, got)
-				}
-			}
-		})
-	}
-}
-
-func TestBinaryTree(t *testing.T) {
-	testCases := []struct {
-		labels []string
-		values []interface{}
-	}{
-		{
-			labels: []string{"foobar"},
-			values: []interface{}{"bazqux"},
-		},
-		{
-			labels: []string{"foo", "bar"},
-			values: []interface{}{"baz", "qux"},
-		},
-		{
-			labels: []string{"abc", "d"},
-			values: []interface{}{"foo", "bar"},
-		},
-		{
-			labels: []string{"a", "abc", "d"},
-			values: []interface{}{"foo", "bar", "baz"},
-		},
-		{
-			labels: []string{"foo", "bar", "baz", "qux"},
-			values: []interface{}{1, 12, 123, 1234},
-		},
-		{
-			labels: []string{
-				"deck",
-				"did",
-				"doe",
-				"dog",
-				"doge",
-				"dogs",
-			},
-			values: []interface{}{1, 2, 3, 4, 5, 6},
-		},
-	}
-	for _, tc := range testCases {
-		t.Run("", func(t *testing.T) {
-			tr := New(Tdebug | Tbinary)
-			for i, v := range tc.values {
-				tr.Add(tc.labels[i], v)
-			}
-			t.Log(tr.String())
-
-			for i, v := range tc.values {
-				label := tc.labels[i]
-				n, _ := tr.Get(label)
-				if want, got := v, n.Value; !reflect.DeepEqual(want, got) {
-					t.Errorf("want %v, got %v", want, got)
-				}
-				if want, got := len(label)*8, n.Depth(); want != got {
-					t.Errorf("want %d, got %d", want, got)
 				}
 			}
 		})

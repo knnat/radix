@@ -213,7 +213,10 @@ func (tr *Tree) Add(label string, v interface{}) error {
 		//  (root) -> ("users", v1)
 		//         -> ("all", v3)
 		//         -> ("@uid", v2)
-		e := tnode.edges[len(tnode.edges)-1].label[0]
+		var e byte;
+		if l := len(tnode.edges); l > 0 {
+			e = tnode.edges[len(tnode.edges)-1].label[0]
+		}
 		if e == tr.escapeAt || e == tr.escapeEnd {
 			if label[0] == tr.escapeAt || label[0] == tr.escapeEnd {
 				return ErrEscape

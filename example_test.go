@@ -3,11 +3,11 @@ package radix_test
 import (
 	"fmt"
 
-	"github.com/gbrlsnchs/radix"
+	"github.com/knnat/radix"
 )
 
 func ExampleTree() {
-	tr := radix.New(radix.Tdebug)
+	tr := radix.New()
 	tr.Add("romane", 1)
 	tr.Add("romanus", 2)
 	tr.Add("romulus", 3)
