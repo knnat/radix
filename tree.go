@@ -107,11 +107,11 @@ func (tr *Tree) Add(label string, v interface{}) error {
 				return ErrEscape
 			}
 			inEscapeEnd = true
-		case tr.delim: 	
-		if inEscapeEnd {
-			return ErrEscape
-		}
-		inEscapeAt = false
+		case tr.delim:
+			if inEscapeEnd {
+				return ErrEscape
+			}
+			inEscapeAt = false
 		}
 	}
 	inEscapeAt = false
@@ -140,6 +140,15 @@ func (tr *Tree) Add(label string, v interface{}) error {
 			}
 			if found > 0 {
 				label = label[found:]
+				if label[0] == tr.escapeAt {
+					inEscapeAt = true
+				}
+				if label[0] == tr.escapeEnd {
+					inEscapeEnd = true
+				}
+				if label[0] == tr.delim {
+					return ErrEscape
+				}
 				slice = slice[found:]
 				next = edge
 				break
@@ -225,7 +234,7 @@ func (tr *Tree) Add(label string, v interface{}) error {
 		//  (root) -> ("users", v1)
 		//         -> ("all", v3)
 		//         -> ("@uid", v2)
-		var e byte;
+		var e byte
 		if l := len(tnode.edges); l > 0 {
 			e = tnode.edges[len(tnode.edges)-1].label[0]
 		}
