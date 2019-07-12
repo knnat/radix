@@ -92,43 +92,55 @@ func (tr *Tree) Add(label string, v interface{}) error {
 		defer tr.mu.Unlock()
 		tr.mu.Lock()
 	}
-	tnode := tr.root
+	// Sanitize label
 	var inEscapeAt bool
 	var inEscapeEnd bool
+	for i := range label {
+		switch label[i] {
+		case tr.escapeAt:
+			if inEscapeAt || inEscapeEnd {
+				return ErrEscape
+			}
+			inEscapeAt = true
+		case tr.escapeEnd:
+			if inEscapeAt || inEscapeEnd {
+				return ErrEscape
+			}
+			inEscapeEnd = true
+		case tr.delim: 	
+		if inEscapeEnd {
+			return ErrEscape
+		}
+		inEscapeAt = false
+		}
+	}
+	inEscapeAt = false
+	inEscapeEnd = false
+	tnode := tr.root
 	for {
 		var next *edge
 		var slice string
 		for _, edge := range tnode.edges {
-			var matches int
+			var found int
 			slice = edge.label
 			for i := range slice {
 				if i < len(label) && slice[i] == label[i] {
-					if slice[i] == tr.escapeAt {
-						if inEscapeAt || inEscapeEnd {
-							return ErrEscape
-						}
+					switch slice[i] {
+					case tr.escapeAt:
 						inEscapeAt = true
-					}
-					if slice[i] == tr.escapeEnd {
-						if inEscapeAt || inEscapeEnd {
-							return ErrEscape
-						}
-						inEscapeEnd = true
-					}
-					if slice[i] == tr.delim {
-						if inEscapeEnd {
-							return ErrEscape
-						}
+					case tr.escapeEnd:
+						inEscapeAt = true
+					case tr.delim:
 						inEscapeAt = false
 					}
-					matches++
+					found++
 					continue
 				}
 				break
 			}
-			if matches > 0 {
-				label = label[matches:]
-				slice = slice[matches:]
+			if found > 0 {
+				label = label[found:]
+				slice = slice[found:]
 				next = edge
 				break
 			}
