@@ -114,6 +114,9 @@ func (tr *Tree) Add(label string, v interface{}) error {
 			inEscapeAt = false
 		}
 	}
+	if inEscapeAt {
+		return ErrEscape
+	}
 	inEscapeAt = false
 	inEscapeEnd = false
 	tnode := tr.root
