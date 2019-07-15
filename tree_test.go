@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	. "github.com/knnat/radix"
+	"github.com/stretchr/testify/assert"
 )
 
 type testWrapper struct {
@@ -15,19 +15,64 @@ type testWrapper struct {
 	value    interface{}
 }
 
-func TestEscape(t *testing.T){
+func TestEscape(t *testing.T) {
 	tr := New()
 
-	err := tr.Add("/abc@abc@/", 0)
-	if assert.Error(t, err){
-		assert.Equal(t, err, ErrInvalid)
-	}
+	// Reject malformed labels
+	assert.EqualError(t, tr.Add("abc@abc@", 0), ErrInvalid.Error())
+	assert.EqualError(t, tr.Add("/abc@abc@/", 0), ErrInvalid.Error())
+	assert.EqualError(t, tr.Add("/@abc@/", 0), ErrInvalid.Error())
 
 	assert.Nil(t, tr.Add("/@abc", 0))
-	assert.Error(t, tr.Add("/@ab", 0))
-	assert.Error(t, tr.Add("/@abcd", 0))
 
-	assert.Nil(t, tr.Add("/@abc", 2))
+	// Ambiguous params name
+	assert.EqualError(t, tr.Add("/@ab", 0), ErrEscape.Error())
+	assert.EqualError(t, tr.Add("/@abcd", 0), ErrEscape.Error())
+	assert.EqualError(t, tr.Add("/@abc/", 2), ErrEscape.Error())
+	assert.EqualError(t, tr.Add("/@efg/", 2), ErrEscape.Error())
+	assert.EqualError(t, tr.Add("/@", 2), ErrEscape.Error())
+	assert.EqualError(t, tr.Add("/@/", 2), ErrEscape.Error())
+
+	// Duplicate label
+	assert.EqualError(t, tr.Add("/@abc", 2), ErrEscape.Error())
+
+	assert.Nil(t, tr.Add("abc", 1))
+	assert.Nil(t, tr.Add("abc@id", 2))
+	assert.Nil(t, tr.Add("abc/@uid", 3))
+	assert.EqualError(t, tr.Add("abc/@uid/", 3), ErrEscape.Error())
+
+	assert.Nil(t, tr.Add("def/@uid/", 4))
+	// Escape conflict
+	assert.EqualError(t, tr.Add("def/@uid", 4), ErrEscape.Error())
+	// Duplicate label
+	assert.EqualError(t, tr.Add("def/@uid/", 4), ErrEscape.Error())
+
+	n, p := tr.Get("/123")
+	assert.Equal(t, 0, n.Value)
+	assert.Equal(t, "123", p["abc"])
+
+	n, p = tr.Get("abc")
+	assert.Equal(t, 1, n.Value)
+	assert.Equal(t, 0, len(p))
+
+	n, p = tr.Get("abc456")
+	assert.Equal(t, 2, n.Value)
+	assert.Equal(t, "456", p["id"])
+
+	n, p = tr.Get("abc456/some/path")
+	assert.Equal(t, 2, n.Value)
+	assert.Equal(t, "456/some/path", p["id"])
+
+	n, p = tr.Get("abc/456")
+	assert.Equal(t, 3, n.Value)
+	assert.Equal(t, "456", p["uid"])
+
+	n, p = tr.Get("abc/456/some/path")
+	assert.Equal(t, 3, n.Value)
+	assert.Equal(t, "456/some/path", p["uid"])
+
+	// "/@uid/get"
+	// "/@uid/post"
 }
 
 func TestTree(t *testing.T) {

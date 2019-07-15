@@ -19,26 +19,26 @@ const (
 
 // Tree is a radix tree.
 type Tree struct {
-	root      *Node
-	length    int // total number of nodes
-	size      int // total byte size
-	safe      bool
-	escape    byte // default '@'
-	delim     byte // default '/'
-	mu        *sync.RWMutex
-	bd        *builder
+	root   *Node
+	length int // total number of nodes
+	size   int // total byte size
+	safe   bool
+	escape byte // default '@'
+	delim  byte // default '/'
+	mu     *sync.RWMutex
+	bd     *builder
 }
 
 // Settings ...
 type Settings struct {
 	Flags     int
-	Escape  byte
+	Escape    byte
 	Delimiter byte
 }
 
 var defaults = &Settings{
 	Flags:     0,
-	Escape:  '@',
+	Escape:    '@',
 	Delimiter: '/',
 }
 
@@ -53,10 +53,10 @@ var (
 // New creates a named radix tree with a single node (its root).
 func (s *Settings) New() *Tree {
 	tr := &Tree{
-		root:      &Node{},
-		length:    1,
-		escape:  s.Escape,
-		delim:     s.Delimiter,
+		root:   &Node{},
+		length: 1,
+		escape: s.Escape,
+		delim:  s.Delimiter,
 	}
 	if s.Flags&Tsafe > 0 {
 		tr.mu = &sync.RWMutex{}
@@ -108,6 +108,7 @@ func (tr *Tree) Add(label string, v interface{}) error {
 	for {
 		var next *edge
 		var slice string
+		inEscape = false
 		for _, edge := range tnode.edges {
 			var found int
 			slice = edge.label
@@ -121,7 +122,7 @@ func (tr *Tree) Add(label string, v interface{}) error {
 					}
 					if label[i] == tr.delim {
 						inEscape = false
-					}			
+					}
 					found++
 					continue
 				}
@@ -149,8 +150,9 @@ func (tr *Tree) Add(label string, v interface{}) error {
 				// 	becomes
 				// 	(root) -> tnode("tomato", v2)
 				if len(slice) == 0 {
-					tnode.Value = v
-					return nil
+					return ErrEscape
+					// tnode.Value = v
+					// return nil
 				}
 				// The label is a prefix of the edge's label.
 				//
@@ -340,18 +342,16 @@ func (tr *Tree) Get(label string) (*Node, map[string]string) {
 				// Check whether there is a delimiter.
 				// If there isn'tr, then use the whole world as parameter.
 				var delimIndex int
+				var whole bool
 				slice = slice[phIndex:]
 				if delimIndex = strings.IndexByte(slice[1:], tr.delim) + 1; delimIndex <= 0 {
 					delimIndex = len(slice)
+					whole = true
 				}
 				key := slice[1:delimIndex] // remove the placeholder from the map key
 				slice = slice[delimIndex:]
-				if edge.node.edges == nil && slice[len(slice)-1] != tr.delim {
+				if delimIndex = strings.IndexByte(label[1:], tr.delim) + 1; delimIndex <= 0 || whole {
 					delimIndex = len(label)
-				} else {
-					if delimIndex = strings.IndexByte(label[1:], tr.delim) + 1; delimIndex <= 0 {
-						delimIndex = len(label)
-					}
 				}
 				if len(key) > 0 {
 					if params == nil {
