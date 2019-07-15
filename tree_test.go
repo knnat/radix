@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	. "github.com/knnat/radix"
 )
 
@@ -12,6 +13,21 @@ type testWrapper struct {
 	priority int
 	depth    int
 	value    interface{}
+}
+
+func TestEscape(t *testing.T){
+	tr := New()
+
+	err := tr.Add("/abc@abc@/", 0)
+	if assert.Error(t, err){
+		assert.Equal(t, err, ErrInvalid)
+	}
+
+	assert.Nil(t, tr.Add("/@abc", 0))
+	assert.Error(t, tr.Add("/@ab", 0))
+	assert.Error(t, tr.Add("/@abcd", 0))
+
+	assert.Nil(t, tr.Add("/@abc", 2))
 }
 
 func TestTree(t *testing.T) {
